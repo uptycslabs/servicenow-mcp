@@ -181,3 +181,9 @@ cython_debug/
 .env.development
 .env.test
 .env.production
+
+# Logs
+logs/
+
+# Temporary Files
+tmp/
