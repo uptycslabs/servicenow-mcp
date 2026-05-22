@@ -20,12 +20,9 @@ from servicenow_mcp.utils.config import (
     OAuthConfig,
     ServerConfig,
 )
+from servicenow_mcp.utils.logging_config import setup_logging
 
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-)
+setup_logging()
 logger = logging.getLogger(__name__)
 
 

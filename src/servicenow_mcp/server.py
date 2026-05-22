@@ -22,10 +22,10 @@ from servicenow_mcp.tools.knowledge_base import (
     list_categories as list_kb_categories_tool,
 )
 from servicenow_mcp.utils.config import ServerConfig
+from servicenow_mcp.utils.logging_config import setup_logging
 from servicenow_mcp.utils.tool_utils import get_tool_definitions
 
-# Set up logging
-logging.basicConfig(level=logging.INFO)
+setup_logging()
 logger = logging.getLogger(__name__)
 
 # Define path for the configuration file
