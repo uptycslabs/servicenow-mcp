@@ -19,6 +19,7 @@ from servicenow_mcp.utils.config import (
     BasicAuthConfig,
     OAuthConfig,
     ServerConfig,
+    BearerAuthConfig,
 )
 from servicenow_mcp.utils.logging_config import setup_logging
 
@@ -100,6 +101,14 @@ def parse_args():
         "--api-key-header",
         help="API key header name",
         default=os.environ.get("SERVICENOW_API_KEY_HEADER", "X-ServiceNow-API-Key"),
+    )
+
+    # Bearer
+    bearer_group = parser.add_argument_group("Bearer Authentication")
+    bearer_group.add_argument(
+        "--bearer-token",
+        help="ServiceNow bearer token",
+        default=os.environ.get("SERVICENOW_BEARER_TOKEN"),
     )
 
     # Script execution API resource path
@@ -204,6 +213,20 @@ def create_config(args) -> ServerConfig:
         )
         # Create the main AuthConfig wrapper
         final_auth_config = AuthConfig(type=auth_type, api_key=api_key_cfg)
+
+    elif auth_type == AuthType.BEARER:
+        token = args.bearer_token or os.getenv("SERVICENOW_BEARER_TOKEN")
+        if not token:
+            raise ValueError(
+                "Bearer token is required for bearer authentication (--bearer-token or SERVICENOW_BEARER_TOKEN)"
+            )
+        # Create the specific config (without instance_url)
+        bearer_cfg = BearerAuthConfig(
+            token=token,
+        )
+        # Create the main AuthConfig wrapper
+        final_auth_config = AuthConfig(type=auth_type, bearer=bearer_cfg)
+
     else:
         # Should not happen if choices are enforced by argparse
         raise ValueError(f"Unsupported authentication type: {args.auth_type}")
