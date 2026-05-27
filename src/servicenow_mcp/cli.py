@@ -176,9 +176,9 @@ def create_config(args) -> ServerConfig:
         password = args.password or os.getenv("SERVICENOW_PASSWORD")  # Needed for password grant
         token_url = args.token_url or os.getenv("SERVICENOW_TOKEN_URL")
 
-        if not client_id or not client_secret or not username or not password:
+        if not client_id or not client_secret:
             raise ValueError(
-                "Client ID, client secret, username, and password are required for OAuth password grant"
+                "Client ID and client secret are required for OAuth client_credentials grant"
                 " (--client-id/SERVICENOW_CLIENT_ID, etc.)"
             )
         if not token_url:
