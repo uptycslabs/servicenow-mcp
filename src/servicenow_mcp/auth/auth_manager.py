@@ -117,7 +117,7 @@ class AuthManager:
         response = requests.post(token_url, headers=headers, data=data_client_credentials)
         
         logger.info(f"client_credentials response status: {response.status_code}")
-        logger.info(f"client_credentials response body: {response.text}")
+        logger.debug(f"client_credentials response body: {response.text}")
         
         if response.status_code == 200:
             token_data = response.json()
@@ -137,7 +137,7 @@ class AuthManager:
             response = requests.post(token_url, headers=headers, data=data_password)
             
             logger.info(f"password grant response status: {response.status_code}")
-            logger.info(f"password grant response body: {response.text}")
+            logger.debug(f"password grant response body: {response.text}")
             
             if response.status_code == 200:
                 token_data = response.json()
