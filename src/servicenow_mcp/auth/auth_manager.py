@@ -68,7 +68,14 @@ class AuthManager:
                 raise ValueError("API key configuration is required")
             
             headers[self.config.api_key.header_name] = self.config.api_key.api_key
-        
+
+        elif self.config.type == AuthType.BEARER:
+            if not self.config.bearer:
+                raise ValueError("Bearer auth configuration is required")
+
+            headers["Authorization"] = f"Bearer {self.config.bearer.token}"
+
+
         return headers
     
     def _get_oauth_token(self):
@@ -110,7 +117,7 @@ class AuthManager:
         response = requests.post(token_url, headers=headers, data=data_client_credentials)
         
         logger.info(f"client_credentials response status: {response.status_code}")
-        logger.info(f"client_credentials response body: {response.text}")
+        logger.debug(f"client_credentials response body: {response.text}")
         
         if response.status_code == 200:
             token_data = response.json()
@@ -130,7 +137,7 @@ class AuthManager:
             response = requests.post(token_url, headers=headers, data=data_password)
             
             logger.info(f"password grant response status: {response.status_code}")
-            logger.info(f"password grant response body: {response.text}")
+            logger.debug(f"password grant response body: {response.text}")
             
             if response.status_code == 200:
                 token_data = response.json()

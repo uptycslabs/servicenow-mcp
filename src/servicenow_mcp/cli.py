@@ -19,13 +19,11 @@ from servicenow_mcp.utils.config import (
     BasicAuthConfig,
     OAuthConfig,
     ServerConfig,
+    BearerAuthConfig,
 )
+from servicenow_mcp.utils.logging_config import setup_logging
 
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-)
+setup_logging()
 logger = logging.getLogger(__name__)
 
 
@@ -105,6 +103,14 @@ def parse_args():
         default=os.environ.get("SERVICENOW_API_KEY_HEADER", "X-ServiceNow-API-Key"),
     )
 
+    # Bearer
+    bearer_group = parser.add_argument_group("Bearer Authentication")
+    bearer_group.add_argument(
+        "--bearer-token",
+        help="ServiceNow bearer token",
+        default=os.environ.get("SERVICENOW_BEARER_TOKEN"),
+    )
+
     # Script execution API resource path
     script_execution_group = parser.add_argument_group("Script Execution API")
     script_execution_group.add_argument(
@@ -170,9 +176,9 @@ def create_config(args) -> ServerConfig:
         password = args.password or os.getenv("SERVICENOW_PASSWORD")  # Needed for password grant
         token_url = args.token_url or os.getenv("SERVICENOW_TOKEN_URL")
 
-        if not client_id or not client_secret or not username or not password:
+        if not client_id or not client_secret:
             raise ValueError(
-                "Client ID, client secret, username, and password are required for OAuth password grant"
+                "Client ID and client secret are required for OAuth client_credentials grant"
                 " (--client-id/SERVICENOW_CLIENT_ID, etc.)"
             )
         if not token_url:
@@ -207,6 +213,20 @@ def create_config(args) -> ServerConfig:
         )
         # Create the main AuthConfig wrapper
         final_auth_config = AuthConfig(type=auth_type, api_key=api_key_cfg)
+
+    elif auth_type == AuthType.BEARER:
+        token = args.bearer_token or os.getenv("SERVICENOW_BEARER_TOKEN")
+        if not token:
+            raise ValueError(
+                "Bearer token is required for bearer authentication (--bearer-token or SERVICENOW_BEARER_TOKEN)"
+            )
+        # Create the specific config (without instance_url)
+        bearer_cfg = BearerAuthConfig(
+            token=token,
+        )
+        # Create the main AuthConfig wrapper
+        final_auth_config = AuthConfig(type=auth_type, bearer=bearer_cfg)
+
     else:
         # Should not happen if choices are enforced by argparse
         raise ValueError(f"Unsupported authentication type: {args.auth_type}")
