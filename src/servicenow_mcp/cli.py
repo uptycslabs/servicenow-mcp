@@ -54,7 +54,7 @@ def parse_args():
     auth_group = parser.add_argument_group("Authentication")
     auth_group.add_argument(
         "--auth-type",
-        choices=["basic", "oauth", "api_key"],
+        choices=["basic", "oauth", "api_key", "bearer"],
         help="Authentication type",
         default=os.environ.get("SERVICENOW_AUTH_TYPE", "basic"),
     )
