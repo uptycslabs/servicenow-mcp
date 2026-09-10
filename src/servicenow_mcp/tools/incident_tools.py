@@ -92,6 +92,56 @@ class IncidentResponse(BaseModel):
     incident_number: Optional[str] = Field(None, description="Number of the affected incident")
 
 
+# Journal fields are write-only: ServiceNow appends them to the activity log and
+# always returns "" for them on the record, so they cannot be verified against
+# the returned record.
+_UNVERIFIABLE_FIELDS = {"work_notes", "comments"}
+
+
+def _field_matches(sent_value, returned_value) -> bool:
+    """Check whether a returned record field reflects the value we sent."""
+    if isinstance(returned_value, dict):
+        # sysparm_display_value=all shape: {"display_value": ..., "value": ...}
+        candidates = [
+            returned_value.get("value"),
+            returned_value.get("display_value"),
+        ]
+    else:
+        candidates = [returned_value]
+
+    sent_normalized = str(sent_value).strip().lower()
+    return any(
+        candidate is not None and str(candidate).strip().lower() == sent_normalized
+        for candidate in candidates
+    )
+
+
+def _get_failed_update_fields(sent: dict, result: dict) -> List[str]:
+    """
+    Compare the fields sent in an update with the record ServiceNow returned.
+
+    ServiceNow prioritizes partial transaction success: invalid field values are
+    silently discarded while the rest of the payload is applied, and the request
+    still returns 200. Returns the names of sent fields whose values are not
+    reflected on the returned record (journal fields are skipped since they are
+    never echoed back).
+    """
+    return [
+        field
+        for field, value in sent.items()
+        if field not in _UNVERIFIABLE_FIELDS
+        and not _field_matches(value, result.get(field))
+    ]
+
+
+def _unwrap_field(result: dict, field: str) -> Optional[str]:
+    """Get a field's raw value from a record, unwrapping display_value=all dicts."""
+    value = result.get(field)
+    if isinstance(value, dict):
+        return value.get("value")
+    return value
+
+
 def create_incident(
     config: ServerConfig,
     auth_manager: AuthManager,
@@ -252,6 +302,9 @@ def update_incident(
         response = requests.put(
             api_url,
             json=data,
+            # Request both raw and display values so the update check can match
+            # whichever form the caller sent (e.g. state="6" or state="Resolved").
+            params={"sysparm_display_value": "all"},
             headers=auth_manager.get_headers(),
             timeout=config.timeout,
         )
@@ -259,11 +312,37 @@ def update_incident(
 
         result = response.json().get("result", {})
 
+        incident_sys_id = _unwrap_field(result, "sys_id")
+        incident_number = _unwrap_field(result, "number")
+
+        # ServiceNow returns 200 even when it silently discards invalid field
+        # values, so tally the returned record against what we sent.
+        failed_fields = _get_failed_update_fields(data, result)
+        if failed_fields:
+            verifiable_fields = [f for f in data if f not in _UNVERIFIABLE_FIELDS]
+            failed_csv = ", ".join(failed_fields)
+            if len(failed_fields) == len(verifiable_fields):
+                message = (
+                    f"Incident update failed. ServiceNow did not apply any of the "
+                    f"requested fields: {failed_csv}"
+                )
+                raise Exception(message)
+            else:
+                message = (
+                    f"Incident partially updated. Fields failed to update: {failed_csv}"
+                )
+                return IncidentResponse(
+                    success=False,
+                    message=message,
+                    incident_id=incident_sys_id,
+                    incident_number=incident_number,
+                )
+
         return IncidentResponse(
             success=True,
             message="Incident updated successfully",
-            incident_id=result.get("sys_id"),
-            incident_number=result.get("number"),
+            incident_id=incident_sys_id,
+            incident_number=incident_number,
         )
 
     except requests.RequestException as e:
