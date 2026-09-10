@@ -323,14 +323,20 @@ def update_incident(
             failed_csv = ", ".join(failed_fields)
             if len(failed_fields) == len(verifiable_fields):
                 message = (
-                    f"Incident update failed. ServiceNow could not update any of the "
+                    f"Incident update failed. ServiceNow did not apply any of the "
                     f"requested fields: {failed_csv}"
                 )
+                raise Exception(message)
             else:
                 message = (
                     f"Incident partially updated. Fields failed to update: {failed_csv}"
                 )
-            raise Exception(message)
+                return IncidentResponse(
+                    success=False,
+                    message=message,
+                    incident_id=incident_sys_id,
+                    incident_number=incident_number,
+                )
 
         return IncidentResponse(
             success=True,
