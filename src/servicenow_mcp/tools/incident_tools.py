@@ -545,6 +545,49 @@ def list_incidents(
         }
 
 
+# ponytail: newest 100 entries per incident; paginate if long-lived incidents need more.
+JOURNAL_LIMIT = 100
+
+
+def _get_journal_entries(config: ServerConfig, auth_manager: AuthManager, incident_data: dict) -> dict:
+    """Return the incident's comments and work notes as lists of entries, newest first.
+
+    Falls back to the record's combined journal string as a single entry when
+    sys_journal_field can't be read, so no history is lost.
+    """
+    query_params = {
+        "sysparm_query": f"element_id={incident_data.get('sys_id')}^elementINcomments,work_notes^ORDERBYDESCsys_created_on",
+        "sysparm_fields": "element,value,sys_created_on,sys_created_by",
+        "sysparm_display_value": "true",
+        "sysparm_limit": JOURNAL_LIMIT,
+    }
+    try:
+        response = requests.get(
+            f"{config.api_url}/table/sys_journal_field",
+            params=query_params,
+            headers=auth_manager.get_headers(),
+            timeout=config.timeout,
+        )
+        response.raise_for_status()
+        rows = response.json().get("result", [])
+    except requests.RequestException as e:
+        logger.warning(f"Failed to read journal entries, falling back to combined text: {e}")
+        return {
+            field: [{"text": incident_data[field]}] if incident_data.get(field) else []
+            for field in ("comments", "work_notes")
+        }
+
+    entries = {"comments": [], "work_notes": []}
+    for row in rows:
+        if row.get("element") in entries:
+            entries[row["element"]].append({
+                "created_on": row.get("sys_created_on"),
+                "created_by": row.get("sys_created_by"),
+                "text": row.get("value"),
+            })
+    return entries
+
+
 def get_incident_by_number(
     config: ServerConfig,
     auth_manager: AuthManager,
@@ -603,11 +646,17 @@ def get_incident_by_number(
             "state": incident_data.get("state"),
             "priority": incident_data.get("priority"),
             "assigned_to": assigned_to,
+            "assignment_group": incident_data.get("assignment_group"),
+            "caller_id": incident_data.get("caller_id"),
             "category": incident_data.get("category"),
             "subcategory": incident_data.get("subcategory"),
+            "close_code": incident_data.get("close_code"),
+            "close_notes": incident_data.get("close_notes"),
             "created_on": incident_data.get("sys_created_on"),
             "updated_on": incident_data.get("sys_updated_on"),
+            "resolved_at": incident_data.get("resolved_at"),
         }
+        incident.update(_get_journal_entries(config, auth_manager, incident_data))
 
         return {
             "success": True,
