@@ -123,6 +123,7 @@ from servicenow_mcp.tools.incident_tools import (
     ResolveIncidentParams,
     UpdateIncidentParams,
     GetIncidentByNumberParams,
+    GetIncidentCommentsParams,
 )
 from servicenow_mcp.tools.incident_tools import (
     add_comment as add_comment_tool,
@@ -141,6 +142,9 @@ from servicenow_mcp.tools.incident_tools import (
 )
 from servicenow_mcp.tools.incident_tools import (
     get_incident_by_number as get_incident_by_number_tool,
+)
+from servicenow_mcp.tools.incident_tools import (
+    get_incident_comments as get_incident_comments_tool,
 )
 from servicenow_mcp.tools.knowledge_base import (
     CreateArticleParams,
@@ -406,6 +410,13 @@ def get_tool_definitions(
             str,
             "Incident details from ServiceNow",
             "json_dict"
+        ),
+        "get_incident_comments": (
+            get_incident_comments_tool,
+            GetIncidentCommentsParams,
+            str,
+            "Page through an incident's comments and work notes, newest first",
+            "json_dict",
         ),
         # Catalog Tools
         "list_catalog_items": (
