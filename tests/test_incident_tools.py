@@ -88,24 +88,19 @@ class TestIncidentTools(unittest.TestCase):
         auth_manager = MagicMock(spec=AuthManager)
         auth_manager.get_headers.return_value = {}
 
-        lookup = MagicMock()
-        lookup.json.return_value = {"result": [{"sys_id": "abc"}]}
-        journal = MagicMock()
-        journal.json.return_value = {"result": [
-            {"element": "work_notes", "value": f"n{i}", "sys_created_on": "t", "sys_created_by": "u"} for i in range(3)
-        ]}
-        mock_get.side_effect = [lookup, journal]
+        journal = "".join(f"2026-10-21 09:29:4{i} - Juno AI (Work notes)\nn{i}\nline2\n\n" for i in range(4))
+        mock_get.return_value.json.return_value = {"result": [{"work_notes": journal}]}
 
-        params = GetIncidentCommentsParams(incident_number="INC0010001", type="work_notes", limit=2, offset=4)
+        params = GetIncidentCommentsParams(incident_number="INC0010001", type="work_notes", limit=2, offset=1)
         result = get_incident_comments(config, auth_manager, params)
 
-        self.assertEqual([e["text"] for e in result["entries"]], ["n0", "n1"])
+        self.assertEqual([e["text"] for e in result["entries"]], ["n1\nline2", "n2\nline2"])
+        self.assertEqual(result["entries"][0], {"type": "work_notes", "created_on": "2026-10-21 09:29:41", "created_by": "Juno AI", "text": "n1\nline2"})
         self.assertTrue(result["has_more"])
-        self.assertEqual(result["next_offset"], 6)
+        self.assertEqual(result["next_offset"], 3)
         sent = mock_get.call_args.kwargs["params"]
-        self.assertEqual(sent["sysparm_limit"], 3)
-        self.assertEqual(sent["sysparm_offset"], 4)
-        self.assertIn("element_id=abc^elementINwork_notes^", sent["sysparm_query"])
+        self.assertEqual(sent["sysparm_fields"], "work_notes")
+        self.assertEqual(sent["sysparm_query"], "number=INC0010001")
 
     @patch('requests.get')
     def test_get_incident_comments_last_page(self, mock_get):
@@ -113,17 +108,14 @@ class TestIncidentTools(unittest.TestCase):
         auth_manager = MagicMock(spec=AuthManager)
         auth_manager.get_headers.return_value = {}
 
-        lookup = MagicMock()
-        lookup.json.return_value = {"result": [{"sys_id": "abc"}]}
-        journal = MagicMock()
-        journal.json.return_value = {"result": [{"element": "comments", "value": "hi"}]}
-        mock_get.side_effect = [lookup, journal]
+        journal = "2026-10-21 09:29:42 - Juno AI (Comments)\nhi\n\n2026-10-21 09:29:40 - Juno AI (Work notes)\nnote\n\n"
+        mock_get.return_value.json.return_value = {"result": [{"comments_and_work_notes": journal}]}
 
         result = get_incident_comments(config, auth_manager, GetIncidentCommentsParams(incident_number="INC0010001"))
 
         self.assertFalse(result["has_more"])
         self.assertIsNone(result["next_offset"])
-        self.assertEqual(result["entries"][0]["type"], "comments")
+        self.assertEqual([e["type"] for e in result["entries"]], ["comments", "work_notes"])
 
     @patch('requests.get')
     def test_get_incident_comments_not_found(self, mock_get):
@@ -131,9 +123,7 @@ class TestIncidentTools(unittest.TestCase):
         auth_manager = MagicMock(spec=AuthManager)
         auth_manager.get_headers.return_value = {}
 
-        lookup = MagicMock()
-        lookup.json.return_value = {"result": []}
-        mock_get.return_value = lookup
+        mock_get.return_value.json.return_value = {"result": []}
 
         result = get_incident_comments(config, auth_manager, GetIncidentCommentsParams(incident_number="INC9999999"))
 
