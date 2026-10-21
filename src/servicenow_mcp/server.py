@@ -280,6 +280,11 @@ class ServiceNowMCP:
             logger.error(f"Error executing tool '{name}': {e}", exc_info=True)
             raise RuntimeError(f"Error during execution of tool '{name}': {e}") from e
 
+        # Tools report API failures (e.g. 403) as success=false; surface them as isError.
+        payload = result.model_dump() if hasattr(result, "model_dump") else result
+        if isinstance(payload, dict) and payload.get("success") is False:
+            raise RuntimeError(payload.get("message") or f"Tool '{name}' failed")
+
         # Serialize the result to a string (preferably JSON) using the helper
         serialized_string = serialize_tool_output(result, name)
         logger.debug(f"Serialized value for tool '{name}': {serialized_string[:500]}...")

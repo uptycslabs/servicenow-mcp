@@ -5,6 +5,7 @@ This module provides tools for managing incidents in ServiceNow.
 """
 
 import logging
+import re
 from typing import Literal, Optional, List
 
 import requests
@@ -81,6 +82,10 @@ class GetIncidentByNumberParams(BaseModel):
     """Parameters for fetching an incident by its number."""
 
     incident_number: str = Field(..., description="The number of the incident to fetch")
+
+
+# Journal display text: "<date time> - <author> (Comments|Work notes)" header, then the entry; date format follows the instance.
+_JOURNAL_HEADER = re.compile(r"^(.+?) - (.+?) \((Comments|Work notes)\)\n", re.M)
 
 
 class GetIncidentCommentsParams(BaseModel):
@@ -643,49 +648,41 @@ def get_incident_comments(
     params: GetIncidentCommentsParams,
 ) -> dict:
     """Return one page of an incident's comments and work notes, newest first."""
+    # Read journals via the incident's display values: itil can't read sys_journal_field rows.
+    field = "comments_and_work_notes" if params.type == "all" else params.type
     try:
         response = requests.get(
             f"{config.api_url}/table/incident",
-            params={"sysparm_query": f"number={params.incident_number}", "sysparm_fields": "sys_id", "sysparm_limit": 1},
-            headers=auth_manager.get_headers(),
-            timeout=config.timeout,
-        )
-        response.raise_for_status()
-        result = response.json().get("result", [])
-        if not result:
-            return {"success": False, "message": f"Incident not found: {params.incident_number}"}
-        incident_id = result[0]["sys_id"]
-
-        elements = "comments,work_notes" if params.type == "all" else params.type
-        response = requests.get(
-            f"{config.api_url}/table/sys_journal_field",
             params={
-                "sysparm_query": f"element_id={incident_id}^elementIN{elements}^ORDERBYDESCsys_created_on",
-                "sysparm_fields": "element,value,sys_created_on,sys_created_by",
+                "sysparm_query": f"number={params.incident_number}",
+                "sysparm_fields": field,
                 "sysparm_display_value": "true",
-                # One extra row tells us whether another page exists.
-                "sysparm_limit": params.limit + 1,
-                "sysparm_offset": params.offset,
+                "sysparm_limit": 1,
             },
             headers=auth_manager.get_headers(),
             timeout=config.timeout,
         )
         response.raise_for_status()
-        rows = response.json().get("result", [])
+        result = response.json().get("result", [])
     except requests.RequestException as e:
         logger.error(f"Failed to read incident comments: {e}")
         return {"success": False, "message": f"Failed to read incident comments: {str(e)}"}
+    if not result:
+        return {"success": False, "message": f"Incident not found: {params.incident_number}"}
 
-    has_more = len(rows) > params.limit
-    entries = [
+    # ponytail: fetches the whole journal per page; fine until incidents carry thousands of entries.
+    parts = _JOURNAL_HEADER.split(result[0].get(field) or "")
+    all_entries = [
         {
-            "type": row.get("element"),
-            "created_on": row.get("sys_created_on"),
-            "created_by": row.get("sys_created_by"),
-            "text": row.get("value"),
+            "type": "work_notes" if kind == "Work notes" else "comments",
+            "created_on": created_on,
+            "created_by": created_by,
+            "text": text.strip(),
         }
-        for row in rows[: params.limit]
+        for created_on, created_by, kind, text in zip(parts[1::4], parts[2::4], parts[3::4], parts[4::4])
     ]
+    entries = all_entries[params.offset : params.offset + params.limit]
+    has_more = len(all_entries) > params.offset + params.limit
     return {
         "success": True,
         "message": f"Returned {len(entries)} entries",
